@@ -2,14 +2,15 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Spotify Sonos Controller</title>
+<title>Spotify Tablet Controller</title>
 <style>
 body { font-family: Arial; text-align:center; background:#121212; color:white; margin:0; padding:0;}
+h1,h2 { margin:10px; }
 #track { margin-top:10px; font-size:18px; }
 button {
   padding: 20px 30px;
   margin: 5px;
-  font-size: 20px;
+  font-size: 18px;
   border-radius: 10px;
   background-color: #1db954;
   color: white;
@@ -17,11 +18,13 @@ button {
 }
 img { width: 200px; margin-top: 20px; border-radius: 10px; }
 input[type=range] { width: 80%; margin: 20px 0; }
+#devices { display:flex; flex-wrap: wrap; justify-content:center; margin-top:10px; }
+#devices button { min-width: 120px; margin:5px; }
 </style>
 </head>
 <body>
 
-<h1>Spotify Sonos Controller</h1>
+<h1>Spotify Tablet Controller</h1>
 
 <img id="cover" src="" alt="Album Cover">
 <div id="track"></div>
@@ -37,15 +40,20 @@ input[type=range] { width: 80%; margin: 20px 0; }
   Lautstärke: <input type="range" id="volume" min="0" max="100" value="50" onchange="setVolume(this.value)">
 </div>
 
+<div>
+  <h2>Gerät auswählen:</h2>
+  <div id="devices"></div>
+</div>
+
 <script>
-const clientId = "ce0298d909dd4c5486edb32134a25c19"; // Spotify Client ID
+const clientId = "ce0298d909dd4c5486edb32134a25c19"; // hier Spotify Client ID eintragen
 const redirectUri = "https://cr0sscu7.github.io/spotify-controller/";
 const scopes = "user-read-playback-state user-modify-playback-state user-read-currently-playing";
 
 let accessToken = null;
-let deviceId = null; // automatisch Sonos Device auswählen
+let deviceId = null;
 
-// PKCE Helper
+// PKCE Hilfsfunktionen
 function generateRandomString(length){
   const possible='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   return Array.from(crypto.getRandomValues(new Uint8Array(length)))
@@ -89,13 +97,13 @@ async function getToken(code){
   });
   const data=await response.json();
   accessToken=data.access_token;
-  await selectSonos();
+  await updateDevices(); // Geräte initial laden
 }
 
 // API Wrapper
-function api(url,method="GET"){ 
-  const headers={"Authorization":"Bearer "+accessToken};
-  return fetch(url,{method,headers});
+function api(url,method="GET",body=null){ 
+  const headers={"Authorization":"Bearer "+accessToken, "Content-Type":"application/json"};
+  return fetch(url,{method,headers,body:body?JSON.stringify(body):null});
 }
 
 // Steuerfunktionen
@@ -105,34 +113,54 @@ function next(){ if(deviceId) api(`https://api.spotify.com/v1/me/player/next?dev
 function prev(){ if(deviceId) api(`https://api.spotify.com/v1/me/player/previous?device_id=${deviceId}`,"POST"); }
 function setVolume(val){ if(deviceId) api(`https://api.spotify.com/v1/me/player/volume?volume_percent=${val}&device_id=${deviceId}`,"PUT"); }
 
-// Sonos automatisch auswählen
-async function selectSonos(){
+// Geräte-Management
+async function getDevices() {
   const res=await api("https://api.spotify.com/v1/me/player/devices");
   const data=await res.json();
-  const sonos=data.devices.find(d=>d.name.toLowerCase().includes("sonos"));
-  if(sonos) deviceId=sonos.id;
+  return data.devices;
 }
 
-// Track aktualisieren
+async function updateDevices(){
+  const devices=await getDevices();
+  const container=document.getElementById("devices");
+  container.innerHTML="";
+  devices.forEach(d=>{
+    const btn=document.createElement("button");
+    btn.innerText=d.name + (d.is_active ? " ✅":"");
+    btn.onclick=()=>selectDevice(d.id);
+    container.appendChild(btn);
+    if(d.is_active) deviceId=d.id; // Standardgerät setzen
+  });
+}
+
+// Gerät auswählen
+async function selectDevice(id){
+  deviceId=id;
+  await api("https://api.spotify.com/v1/me/player", "PUT", {device_ids:[id], play:true});
+  updateDevices();
+}
+
+// Track & Albumcover
 async function getTrack(){
   try{
-    if(!deviceId) await selectSonos();
     const res=await api("https://api.spotify.com/v1/me/player/currently-playing");
     const data=await res.json();
     if(data && data.item){
-      document.getElementById("track").innerText=data.item.name+" - "+data.item.artists.map(a=>a.name).join(", ");
+      document.getElementById("track").innerText=data.item.name + " - " + data.item.artists.map(a=>a.name).join(", ");
       document.getElementById("cover").src=data.item.album.images[0].url;
-      document.getElementById("volume").value=data.device.volume_percent;
+      if(data.device) document.getElementById("volume").value=data.device.volume_percent;
     }
-  } catch(e){
-    console.log("Kein Track oder Token abgelaufen");
-  }
+  } catch(e){ console.log("Kein Track oder Token abgelaufen"); }
 }
 
+// PKCE Flow: Code aus URL holen
 const params=new URLSearchParams(window.location.search);
 const code=params.get("code");
 if(code){
-  getToken(code).then(()=>{ setInterval(getTrack,3000); });
+  getToken(code).then(()=>{
+    setInterval(getTrack,3000);  // Track alle 3 Sekunden aktualisieren
+    setInterval(updateDevices,5000); // Geräte alle 5 Sekunden aktualisieren
+  });
 }
 </script>
 
