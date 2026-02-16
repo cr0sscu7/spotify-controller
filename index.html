@@ -2,58 +2,71 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Spotify Tablet Controller</title>
+<title>Spotify HiFi Tablet Controller</title>
 <style>
-body { font-family: Arial; text-align:center; background:#121212; color:white; margin:0; padding:0;}
-h1,h2 { margin:10px; }
-#track { margin-top:10px; font-size:18px; }
-button {
-  padding: 20px 30px;
-  margin: 5px;
-  font-size: 18px;
-  border-radius: 10px;
-  background-color: #1db954;
-  color: white;
-  border: none;
+body {
+  font-family: Arial; 
+  text-align:center; 
+  background:#121212; 
+  color:white; 
+  margin:0; padding:0;
 }
-img { width: 200px; margin-top: 20px; border-radius: 10px; }
-input[type=range] { width: 80%; margin: 20px 0; }
-#devices { display:flex; flex-wrap: wrap; justify-content:center; margin-top:10px; }
-#devices button { min-width: 120px; margin:5px; }
+h1 { margin:10px; font-size:28px; }
+#track { margin-top:10px; font-size:18px; }
+#cover { width:300px; height:300px; margin:20px auto; border-radius:15px; display:block; }
+
+button {
+  padding: 25px 35px;
+  margin:5px;
+  font-size:20px;
+  border-radius:12px;
+  background-color: #1db954;
+  color:white;
+  border:none;
+  min-width:100px;
+}
+
+#controls { display:flex; justify-content:center; flex-wrap:wrap; margin:10px auto; }
+
+#volume-container { margin:20px auto; width:90%; }
+input[type=range] { width:100%; }
+
+#devices-container { margin-top:20px; max-height:150px; overflow-y:auto; display:flex; flex-wrap:wrap; justify-content:center; }
+#devices-container button { min-width:120px; margin:5px; font-size:18px; }
 </style>
 </head>
 <body>
 
-<h1>Spotify Tablet Controller</h1>
+<h1>Spotify HiFi Controller</h1>
 
 <img id="cover" src="" alt="Album Cover">
-<div id="track"></div>
+<div id="track">--</div>
 
-<div>
-  <button onclick="play()">▶ Play</button>
-  <button onclick="pause()">⏸ Pause</button>
-  <button onclick="prev()">⏮ Prev</button>
-  <button onclick="next()">⏭ Next</button>
+<div id="controls">
+  <button onclick="prev()">⏮</button>
+  <button onclick="play()">▶</button>
+  <button onclick="pause()">⏸</button>
+  <button onclick="next()">⏭</button>
 </div>
 
-<div>
+<div id="volume-container">
   Lautstärke: <input type="range" id="volume" min="0" max="100" value="50" onchange="setVolume(this.value)">
 </div>
 
 <div>
-  <h2>Gerät auswählen:</h2>
-  <div id="devices"></div>
+  <h2>Geräte auswählen:</h2>
+  <div id="devices-container"></div>
 </div>
 
 <script>
-const clientId = "ce0298d909dd4c5486edb32134a25c19"; // hier Spotify Client ID eintragen
+const clientId = "ce0298d909dd4c5486edb32134a25c19"; 
 const redirectUri = "https://cr0sscu7.github.io/spotify-controller/";
 const scopes = "user-read-playback-state user-modify-playback-state user-read-currently-playing";
 
 let accessToken = null;
 let deviceId = null;
 
-// PKCE Hilfsfunktionen
+// PKCE Helper
 function generateRandomString(length){
   const possible='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   return Array.from(crypto.getRandomValues(new Uint8Array(length)))
@@ -97,12 +110,12 @@ async function getToken(code){
   });
   const data=await response.json();
   accessToken=data.access_token;
-  await updateDevices(); // Geräte initial laden
+  await updateDevices();
 }
 
 // API Wrapper
 function api(url,method="GET",body=null){ 
-  const headers={"Authorization":"Bearer "+accessToken, "Content-Type":"application/json"};
+  const headers={"Authorization":"Bearer "+accessToken,"Content-Type":"application/json"};
   return fetch(url,{method,headers,body:body?JSON.stringify(body):null});
 }
 
@@ -114,7 +127,7 @@ function prev(){ if(deviceId) api(`https://api.spotify.com/v1/me/player/previous
 function setVolume(val){ if(deviceId) api(`https://api.spotify.com/v1/me/player/volume?volume_percent=${val}&device_id=${deviceId}`,"PUT"); }
 
 // Geräte-Management
-async function getDevices() {
+async function getDevices(){
   const res=await api("https://api.spotify.com/v1/me/player/devices");
   const data=await res.json();
   return data.devices;
@@ -122,45 +135,48 @@ async function getDevices() {
 
 async function updateDevices(){
   const devices=await getDevices();
-  const container=document.getElementById("devices");
+  const container=document.getElementById("devices-container");
   container.innerHTML="";
   devices.forEach(d=>{
     const btn=document.createElement("button");
-    btn.innerText=d.name + (d.is_active ? " ✅":"");
+    btn.innerText=d.name + (d.is_active?" ✅":"");
     btn.onclick=()=>selectDevice(d.id);
     container.appendChild(btn);
-    if(d.is_active) deviceId=d.id; // Standardgerät setzen
+    if(d.is_active) deviceId=d.id;
   });
 }
 
 // Gerät auswählen
 async function selectDevice(id){
   deviceId=id;
-  await api("https://api.spotify.com/v1/me/player", "PUT", {device_ids:[id], play:true});
+  await api("https://api.spotify.com/v1/me/player","PUT",{device_ids:[id], play:true});
   updateDevices();
 }
 
-// Track & Albumcover
+// Track + Albumcover
 async function getTrack(){
   try{
     const res=await api("https://api.spotify.com/v1/me/player/currently-playing");
     const data=await res.json();
     if(data && data.item){
-      document.getElementById("track").innerText=data.item.name + " - " + data.item.artists.map(a=>a.name).join(", ");
+      document.getElementById("track").innerText=data.item.name+" - "+data.item.artists.map(a=>a.name).join(", ");
       document.getElementById("cover").src=data.item.album.images[0].url;
       if(data.device) document.getElementById("volume").value=data.device.volume_percent;
     }
   } catch(e){ console.log("Kein Track oder Token abgelaufen"); }
 }
 
-// PKCE Flow: Code aus URL holen
+// PKCE Flow
 const params=new URLSearchParams(window.location.search);
 const code=params.get("code");
 if(code){
   getToken(code).then(()=>{
-    setInterval(getTrack,3000);  // Track alle 3 Sekunden aktualisieren
-    setInterval(updateDevices,5000); // Geräte alle 5 Sekunden aktualisieren
+    setInterval(getTrack,3000);
+    setInterval(updateDevices,5000);
   });
+} else {
+  // Wenn noch nicht eingeloggt
+  document.body.insertAdjacentHTML('afterbegin','<button onclick="login()" style="font-size:22px; padding:15px; margin:10px;">Login mit Spotify</button>');
 }
 </script>
 
