@@ -2,44 +2,55 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Spotify Controller</title>
+<title>Spotify Tablet Controller</title>
 <style>
 body { font-family: Arial; text-align:center; background:#121212; color:white; }
-button { padding:15px; margin:10px; font-size:18px; }
-#track { margin-top:20px; font-size:20px; }
+#track { margin-top:20px; font-size:18px; }
+button {
+  padding: 20px 30px; 
+  margin: 10px;
+  font-size: 20px;
+  border-radius: 10px;
+  background-color: #1db954;
+  color: white;
+  border: none;
+}
+img { width: 200px; margin-top: 20px; border-radius: 10px; }
 </style>
 </head>
 <body>
 
 <h1>Spotify Controller</h1>
+
 <button onclick="login()">Login with Spotify</button>
 <br>
-<button onclick="play()">Play</button>
-<button onclick="pause()">Pause</button>
-<button onclick="next()">Next</button>
-<button onclick="prev()">Prev</button>
+<button onclick="play()">▶ Play</button>
+<button onclick="pause()">⏸ Pause</button>
+<button onclick="next()">⏭ Next</button>
+<button onclick="prev()">⏮ Prev</button>
+
 <div id="track"></div>
+<img id="cover" src="" alt="Album Cover">
 
 <script>
-const clientId = "ce0298d909dd4c5486edb32134a25c19";
+const clientId = "ce0298d909dd4c5486edb32134a25c19"; // hier deine Spotify Client ID eintragen
 const redirectUri = "https://cr0sscu7.github.io/spotify-controller/";
 const scopes = "user-read-playback-state user-modify-playback-state user-read-currently-playing";
 
 let accessToken = null;
 
+// PKCE Hilfsfunktionen
 function generateRandomString(length) {
   const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   return Array.from(crypto.getRandomValues(new Uint8Array(length)))
     .map(x => possible[x % possible.length])
     .join('');
 }
-
 async function sha256(plain) {
   const encoder = new TextEncoder();
   const data = encoder.encode(plain);
   return await crypto.subtle.digest('SHA-256', data);
 }
-
 function base64urlencode(a) {
   return btoa(String.fromCharCode(...new Uint8Array(a)))
     .replace(/\+/g, '-')
@@ -47,6 +58,7 @@ function base64urlencode(a) {
     .replace(/=+$/, '');
 }
 
+// Login Flow
 async function login() {
   const codeVerifier = generateRandomString(64);
   localStorage.setItem("verifier", codeVerifier);
@@ -57,6 +69,7 @@ async function login() {
   window.location = authUrl;
 }
 
+// Token holen
 async function getToken(code) {
   const verifier = localStorage.getItem("verifier");
 
@@ -78,6 +91,7 @@ async function getToken(code) {
   accessToken = data.access_token;
 }
 
+// API Wrapper
 function api(url, method="GET") {
   return fetch(url, {
     method: method,
@@ -85,20 +99,28 @@ function api(url, method="GET") {
   });
 }
 
+// Steuerfunktionen
 function play(){ api("https://api.spotify.com/v1/me/player/play","PUT"); }
 function pause(){ api("https://api.spotify.com/v1/me/player/pause","PUT"); }
 function next(){ api("https://api.spotify.com/v1/me/player/next","POST"); }
 function prev(){ api("https://api.spotify.com/v1/me/player/previous","POST"); }
 
+// Track aktualisieren
 async function getTrack(){
-  const res = await api("https://api.spotify.com/v1/me/player/currently-playing");
-  const data = await res.json();
-  if(data && data.item){
-    document.getElementById("track").innerText =
-      data.item.name + " - " + data.item.artists[0].name;
+  try{
+    const res = await api("https://api.spotify.com/v1/me/player/currently-playing");
+    const data = await res.json();
+    if(data && data.item){
+      document.getElementById("track").innerText =
+        data.item.name + " - " + data.item.artists.map(a=>a.name).join(", ");
+      document.getElementById("cover").src = data.item.album.images[0].url;
+    }
+  } catch(e){
+    console.log("No track playing or token expired");
   }
 }
 
+// PKCE Flow: Code aus URL holen
 const params = new URLSearchParams(window.location.search);
 const code = params.get("code");
 if(code){
